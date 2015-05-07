@@ -1,6 +1,7 @@
 import re
 import base64
 import xml.etree.ElementTree as ET
+from threading import Thread
 
 from winrm.protocol import Protocol
 
@@ -23,6 +24,9 @@ class Session(object):
         self.url = self._build_url(target, transport)
         self.protocol = Protocol(self.url, transport=transport,
                                  username=username, password=password)
+
+    def get_protocol(self):
+        return self.protocol
 
     def run_cmd(self, command, args=()):
         # TODO optimize perf. Do not call open/close shell every time
@@ -107,3 +111,36 @@ class Session(object):
         if not path:
             path = 'wsman'
         return '{0}://{1}:{2}/{3}'.format(scheme, host, port, path.lstrip('/'))
+
+
+class SessionPool():
+    def __init__(self):
+        self._sessions = {}
+
+    def run_cmd(self, session, command, args):
+        """
+        Receives a session and launches a cmd command.
+
+        :return command_key in order to retrieve to order status
+        """
+        prtcl = session.get_protocol()
+        shell_id = prtcl.open_shell()
+        command_id = prtcl.run_command(shell_id, command, args)
+        command_key = "{0}:{1}".format(shell_id, command_id)
+        self._sessions[command_key] = [prtcl, None]
+        Thread(target=self._run_cmd_thread, args=(command_key,)).start()
+        return command_key
+
+    def run_ps(self, session):
+        pass
+
+    def _run_cmd_thread(self, command_key):
+        prtcl = self._sessions[command_key][0]
+        shell_id, command_id = command_key[:command_key.index(':')], command_key[command_key.index(':') + 1:]
+        rs = Response(prtcl.get_command_output(shell_id, command_id))
+        self._sessions[command_key][1] = rs
+        prtcl.cleanup_command(shell_id, command_id)
+        prtcl.close_shell(shell_id)
+
+    def get_response(self, command_key):
+        return self._sessions[command_key][1]
