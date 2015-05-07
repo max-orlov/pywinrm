@@ -127,7 +127,7 @@ class SessionPool():
         shell_id = prtcl.open_shell()
         command_id = prtcl.run_command(shell_id, command, args)
         command_key = "{0}:{1}".format(shell_id, command_id)
-        self._sessions[command_key] = [prtcl, None]
+        self._sessions[command_key] = [prtcl, Response(["", "", -1])]
         Thread(target=self._run_cmd_thread, args=(command_key,)).start()
         return command_key
 
@@ -137,8 +137,7 @@ class SessionPool():
     def _run_cmd_thread(self, command_key):
         prtcl = self._sessions[command_key][0]
         shell_id, command_id = command_key[:command_key.index(':')], command_key[command_key.index(':') + 1:]
-        rs = Response(prtcl.get_command_output(shell_id, command_id))
-        self._sessions[command_key][1] = rs
+        self._sessions[command_key][1] = Response(prtcl.get_command_output(shell_id, command_id))
         prtcl.cleanup_command(shell_id, command_id)
         prtcl.close_shell(shell_id)
 
