@@ -4,7 +4,6 @@ import uuid
 import xml.etree.ElementTree as ET
 from isodate.isoduration import duration_isoformat
 import xmltodict
-import sys
 from winrm.transport import HttpPlaintext, HttpKerberos, HttpSSL
 
 
@@ -106,7 +105,7 @@ class Protocol(object):
             # TODO: research Lifetime a bit more:
             # http://msdn.microsoft.com/en-us/library/cc251546(v=PROT.13).aspx
             # if lifetime:
-            #    shell['rsp:Lifetime'] = iso8601_duration.sec_to_dur(lifetime)
+            # shell['rsp:Lifetime'] = iso8601_duration.sec_to_dur(lifetime)
             # TODO: make it so the input is given in milliseconds and converted
             # to xs:duration
         if idle_timeout:
@@ -248,7 +247,7 @@ class Protocol(object):
                 }
             ]
         }
-        cmd_line = rq['env:Envelope'].setdefault('env:Body', {})\
+        cmd_line = rq['env:Envelope'].setdefault('env:Body', {}) \
             .setdefault('rsp:CommandLine', {})
         cmd_line['rsp:Command'] = {'#text': command}
         if arguments:
@@ -292,7 +291,7 @@ class Protocol(object):
         # TODO change assert into user-friendly exception
         assert uuid.UUID(relates_to.replace('uuid:', '')) == message_id
 
-    def get_command_output(self, shell_id, command_id, keep_track):
+    def get_command_output(self, shell_id, command_id, out_stream, err_stream, keep_track):
         """
         Get the Output of the given shell and command
         @param string shell_id: The shell id on the remote machine.
@@ -308,20 +307,22 @@ class Protocol(object):
         stdout_buffer, stderr_buffer = [], []
         command_done = False
         while not command_done:
-            stdout, stderr, return_code, command_done = self._raw_get_command_output(shell_id, command_id, keep_track)
+            stdout, stderr, return_code, command_done = self._raw_get_command_output(shell_id, command_id, out_stream,
+                                                                                     err_stream, keep_track)
             stdout_buffer.append(stdout)
             stderr_buffer.append(stderr)
         return ''.join(stdout_buffer), ''.join(stderr_buffer), return_code
 
 
-    def _raw_get_command_output(self, shell_id, command_id, keep_track=False):
+    def _raw_get_command_output(self, shell_id, command_id, out_stream, err_stream,
+                                keep_track=False):
         rq = {'env:Envelope': self._get_soap_header(
             resource_uri='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd',  # NOQA
             action='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive',  # NOQA
             shell_id=shell_id)}
 
         stream = rq['env:Envelope'].setdefault(
-            'env:Body', {}).setdefault('rsp:Receive', {})\
+            'env:Body', {}).setdefault('rsp:Receive', {}) \
             .setdefault('rsp:DesiredStream', {})
         stream['@CommandId'] = command_id
         stream['#text'] = 'stdout stderr'
@@ -336,11 +337,11 @@ class Protocol(object):
             if stream_node.text:
                 if stream_node.attrib['Name'] == 'stdout':
                     if keep_track:
-                        print >> sys.stdout, str(base64.b64decode(stream_node.text.encode('ascii')))
+                        out_stream.write(str(base64.b64decode(stream_node.text.encode('ascii'))))
                     stdout += str(base64.b64decode(stream_node.text.encode('ascii')))
                 elif stream_node.attrib['Name'] == 'stderr':
                     if keep_track:
-                        print >> sys.stderr, str(base64.b64decode(stream_node.text.encode('ascii')))
+                        err_stream.write(str(base64.b64decode(stream_node.text.encode('ascii'))))
                     stderr += str(base64.b64decode(stream_node.text.encode('ascii')))
 
         # We may need to get additional output if the stream has not finished.
