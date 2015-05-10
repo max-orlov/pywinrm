@@ -1,5 +1,6 @@
 import re
 import base64
+import subprocess
 import xml.etree.ElementTree as ET
 from threading import Thread
 
@@ -18,6 +19,7 @@ class Response(object):
         return '<Response code {0}, out "{1}", err "{2}">'.format(
             self.status_code, self.std_out[:20], self.std_err[:20])
 
+
 class Session(object):
     # TODO implement context manager methods
     def __init__(self, target, auth, transport='plaintext'):
@@ -29,11 +31,14 @@ class Session(object):
     def get_protocol(self):
         return self.protocol
 
-    def run_cmd(self, command, args=()):
+    def run_cmd(self, command, args=(), keep_track=False):
         # TODO optimize perf. Do not call open/close shell every time
         shell_id = self.protocol.open_shell()
         command_id = self.protocol.run_command(shell_id, command, args)
-        rs = Response(self.protocol.get_command_output(shell_id, command_id))
+        return self.get_results(shell_id, command_id, keep_track)
+
+    def get_results(self, shell_id, command_id, keep_track):
+        rs = Response(self.protocol.get_command_output(shell_id, command_id, keep_track))
         self.protocol.cleanup_command(shell_id, command_id)
         self.protocol.close_shell(shell_id)
         return rs
@@ -99,7 +104,8 @@ class Session(object):
     @staticmethod
     def _build_url(target, transport):
         match = re.match(
-            '(?i)^((?P<scheme>http[s]?)://)?(?P<host>[0-9a-z-_.]+)(:(?P<port>\d+))?(?P<path>(/)?(wsman)?)?', target)  # NOQA
+            '(?i)^((?P<scheme>http[s]?)://)?(?P<host>[0-9a-z-_.]+)(:(?P<port>\d+))?(?P<path>(/)?(wsman)?)?',
+            target)  # NOQA
         scheme = match.group('scheme')
         if not scheme:
             # TODO do we have anything other than HTTP/HTTPS
@@ -118,29 +124,38 @@ class NonBlockingRequests():
     def __init__(self):
         self._sessions = {}
 
-    def run_cmd(self, session, command, args):
-        """
-        Receives a session and launches a cmd command.
-
-        :return command_key in order to retrieve to order status
-        """
-        prtcl = session.get_protocol()
-        shell_id = prtcl.open_shell()
-        command_id = prtcl.run_command(shell_id, command, args)
+    def run_cmd(self, session, command, args, keep_track=False):
+        shell_id = session.get_protocol().open_shell()
+        command_id = session.get_protocol().run_command(shell_id, command, args)
         command_key = "{0}:{1}".format(shell_id, command_id)
-        self._sessions[command_key] = [prtcl, Response(["", "", -1])]
-        Thread(target=self._run_cmd_thread, args=[command_key]).start()
+        self._sessions[command_key] = {"session": session, "response": Response(["", "", -1])}
+        Thread(target=self._run_cmd, args=[command_key, keep_track]).start()
         return command_key
 
-    def run_ps(self, session):
-        pass
-
-    def _run_cmd_thread(self, command_key):
-        prtcl = self._sessions[command_key][0]
+    def _run_cmd(self, command_key, keep_track):
+        session = self._sessions[command_key]["session"]
         shell_id, command_id = command_key[:command_key.index(':')], command_key[command_key.index(':') + 1:]
-        prtcl.run_command_nb(shell_id, command_id, self._sessions[command_key][1])
-        prtcl.cleanup_command(shell_id, command_id)
-        prtcl.close_shell(shell_id)
+        self._sessions[command_key]["response"] = session.get_results(shell_id, command_id, keep_track)
+
+    def run_ps(self, session, script, keep_track=False):
+        command_key = hash(session)
+        self._sessions[command_key] = {"session": session, "response": Response(["", "", -1])}
+        Thread(target=self._run_ps, args=[command_key, script, keep_track]).start()
+
+    def _run_ps(self, command_key, script, keep_track):
+        base64_script = base64.b64encode(script.encode("utf_16_le"))
+        session = self._sessions[command_key]["sessions"]
+        self._sessions[command_key]["response"] = session.run_cmd("powershell -encodedcommand %s" % (base64_script),
+                                                                  keep_track)
+        rs = self._sessions[command_key]["response"]
+        if len(rs.std_err):
+            self._sessions[command_key]["response"].std_err = session.clean_error_msg(rs.std_err)
 
     def get_response(self, command_key):
-        return self._sessions[command_key][1]
+        return self._sessions[command_key]["response"]
+
+    def get_session(self, command_key):
+        return self._sessions[command_key]["session"]
+
+    def delete_dialog(self, command_key):
+        del self._sessions[command_key]

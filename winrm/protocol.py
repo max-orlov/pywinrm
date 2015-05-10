@@ -4,6 +4,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from isodate.isoduration import duration_isoformat
 import xmltodict
+import sys
 from winrm.transport import HttpPlaintext, HttpKerberos, HttpSSL
 
 
@@ -291,7 +292,7 @@ class Protocol(object):
         # TODO change assert into user-friendly exception
         assert uuid.UUID(relates_to.replace('uuid:', '')) == message_id
 
-    def get_command_output(self, shell_id, command_id):
+    def get_command_output(self, shell_id, command_id, keep_track):
         """
         Get the Output of the given shell and command
         @param string shell_id: The shell id on the remote machine.
@@ -307,24 +308,13 @@ class Protocol(object):
         stdout_buffer, stderr_buffer = [], []
         command_done = False
         while not command_done:
-            stdout, stderr, return_code, command_done = \
-                self._raw_get_command_output(shell_id, command_id)
+            stdout, stderr, return_code, command_done = self._raw_get_command_output(shell_id, command_id, keep_track)
             stdout_buffer.append(stdout)
             stderr_buffer.append(stderr)
         return ''.join(stdout_buffer), ''.join(stderr_buffer), return_code
 
-    def run_command_nb(self, shell_id, command_id, rs):
-        command_done = False
-        while not command_done:
-            tmp_out, tmp_err, rs.status_code, command_done = self._raw_get_command_output(shell_id, command_id)
 
-            rs.std_out_buffer.append(tmp_out)
-            rs.std_err_buffer.append(tmp_err)
-
-            rs.std_out = "".join(rs.std_out_buffer)
-            rs.std_err = "".join(rs.std_err_buffer)
-
-    def _raw_get_command_output(self, shell_id, command_id):
+    def _raw_get_command_output(self, shell_id, command_id, keep_track=False):
         rq = {'env:Envelope': self._get_soap_header(
             resource_uri='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd',  # NOQA
             action='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive',  # NOQA
@@ -345,11 +335,13 @@ class Protocol(object):
         for stream_node in stream_nodes:
             if stream_node.text:
                 if stream_node.attrib['Name'] == 'stdout':
-                    stdout += str(base64.b64decode(
-                        stream_node.text.encode('ascii')))
+                    if keep_track:
+                        print >> sys.stdout, str(base64.b64decode(stream_node.text.encode('ascii')))
+                    stdout += str(base64.b64decode(stream_node.text.encode('ascii')))
                 elif stream_node.attrib['Name'] == 'stderr':
-                    stderr += str(base64.b64decode(
-                        stream_node.text.encode('ascii')))
+                    if keep_track:
+                        print >> sys.stderr, str(base64.b64decode(stream_node.text.encode('ascii')))
+                    stderr += str(base64.b64decode(stream_node.text.encode('ascii')))
 
         # We may need to get additional output if the stream has not finished.
         # The CommandState will change from Running to Done like so:
