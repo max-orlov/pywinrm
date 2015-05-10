@@ -8,14 +8,15 @@ from winrm.protocol import Protocol
 
 class Response(object):
     """Response from a remote command execution"""
+
     def __init__(self, args):
         self.std_out, self.std_err, self.status_code = args
+        self.std_out_buffer, self.std_err_buffer = [], []
 
     def __repr__(self):
         # TODO put tree dots at the end if out/err was truncated
         return '<Response code {0}, out "{1}", err "{2}">'.format(
             self.status_code, self.std_out[:20], self.std_err[:20])
-
 
 class Session(object):
     # TODO implement context manager methods
@@ -113,7 +114,7 @@ class Session(object):
         return '{0}://{1}:{2}/{3}'.format(scheme, host, port, path.lstrip('/'))
 
 
-class SessionPool():
+class NonBlockingRequests():
     def __init__(self):
         self._sessions = {}
 
@@ -128,7 +129,7 @@ class SessionPool():
         command_id = prtcl.run_command(shell_id, command, args)
         command_key = "{0}:{1}".format(shell_id, command_id)
         self._sessions[command_key] = [prtcl, Response(["", "", -1])]
-        Thread(target=self._run_cmd_thread, args=(command_key,)).start()
+        Thread(target=self._run_cmd_thread, args=[command_key]).start()
         return command_key
 
     def run_ps(self, session):
@@ -137,7 +138,7 @@ class SessionPool():
     def _run_cmd_thread(self, command_key):
         prtcl = self._sessions[command_key][0]
         shell_id, command_id = command_key[:command_key.index(':')], command_key[command_key.index(':') + 1:]
-        self._sessions[command_key][1] = Response(prtcl.get_command_output(shell_id, command_id))
+        prtcl.run_command_nb(shell_id, command_id, self._sessions[command_key][1])
         prtcl.cleanup_command(shell_id, command_id)
         prtcl.close_shell(shell_id)
 

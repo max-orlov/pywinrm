@@ -313,6 +313,17 @@ class Protocol(object):
             stderr_buffer.append(stderr)
         return ''.join(stdout_buffer), ''.join(stderr_buffer), return_code
 
+    def run_command_nb(self, shell_id, command_id, rs):
+        command_done = False
+        while not command_done:
+            tmp_out, tmp_err, rs.status_code, command_done = self._raw_get_command_output(shell_id, command_id)
+
+            rs.std_out_buffer.append(tmp_out)
+            rs.std_err_buffer.append(tmp_err)
+
+            rs.std_out = "".join(rs.std_out_buffer)
+            rs.std_err = "".join(rs.std_err_buffer)
+
     def _raw_get_command_output(self, shell_id, command_id):
         rq = {'env:Envelope': self._get_soap_header(
             resource_uri='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd',  # NOQA
