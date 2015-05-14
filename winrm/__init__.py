@@ -34,21 +34,16 @@ class Session(object):
         return rs
 
     def run_ps(self, script, out_stream=sys.stdout, err_stream=sys.stderr, keep_track=False):
-        """base64 encodes a Powershell script and executes the powershell
-        encoded script command
-        """
-
-    def run_ps(self, script, out_stream=sys.stdout, err_stream=sys.stderr, keep_track=False):
         """base64 encodes a Powershell script and executes the powershell encoded script command"""
 
         # must use utf16 little endian on windows
         base64_script = base64.b64encode(script.encode("utf_16_le"))
-        rs = self.run_cmd("powershell -encodedcommand %s" % (base64_script), out_stream, err_stream, keep_track)
+        rs = self.run_cmd("powershell -encodedcommand %s" % (base64_script), out_stream=out_stream,
+                          err_stream=err_stream, keep_track=keep_track)
         if len(rs.std_err):
             # if there was an error message, clean it it up and make it human readable
             rs.std_err = self.clean_error_msg(rs.std_err)
         return rs
-
 
     def clean_error_msg(self, msg):
         """converts a Powershell CLIXML message to a more human readable string"""
