@@ -261,7 +261,7 @@ class Protocol(object):
         # TODO change assert into user-friendly exception
         assert uuid.UUID(relates_to.replace('uuid:', '')) == message_id
 
-    def get_command_output(self, shell_id, command_id):
+    def get_command_output(self, shell_id, command_id, out_stream, err_stream, keep_track):
         """
         Get the Output of the given shell and command
         @param string shell_id: The shell id on the remote machine.  See #open_shell
@@ -274,12 +274,14 @@ class Protocol(object):
         command_done = False
         while not command_done:
             stdout, stderr, return_code, command_done = \
-                self._raw_get_command_output(shell_id, command_id)
+                self._raw_get_command_output(shell_id, command_id, out_stream,
+                                             err_stream, keep_track)
             stdout_buffer.append(stdout)
             stderr_buffer.append(stderr)
         return ''.join(stdout_buffer), ''.join(stderr_buffer), return_code
 
-    def _raw_get_command_output(self, shell_id, command_id):
+    def _raw_get_command_output(self, shell_id, command_id, out_stream, err_stream,
+                                keep_track=False):
         rq = {'env:Envelope': self._get_soap_header(
             resource_uri='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd',
             action='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive',
@@ -298,8 +300,12 @@ class Protocol(object):
         for stream_node in stream_nodes:
             if stream_node.text:
                 if stream_node.attrib['Name'] == 'stdout':
+                    if keep_track:
+                        out_stream.write(str(base64.b64decode(stream_node.text.encode('ascii'))))
                     stdout += str(base64.b64decode(stream_node.text.encode('ascii')))
                 elif stream_node.attrib['Name'] == 'stderr':
+                    if keep_track:
+                        err_stream.write(str(base64.b64decode(stream_node.text.encode('ascii'))))
                     stderr += str(base64.b64decode(stream_node.text.encode('ascii')))
 
         # We may need to get additional output if the stream has not finished.
