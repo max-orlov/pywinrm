@@ -2,7 +2,6 @@ import re
 import base64
 import sys
 import xml.etree.ElementTree as ET
-from threading import Thread
 
 from winrm.protocol import Protocol
 
@@ -35,9 +34,6 @@ class Session(object):
         # TODO optimize perf. Do not call open/close shell every time
         shell_id = self.protocol.open_shell()
         command_id = self.protocol.run_command(shell_id, command, args)
-        return self.get_results(shell_id, command_id, out_stream, err_stream, keep_track)
-
-    def get_results(self, shell_id, command_id, out_stream, err_stream,  keep_track):
         rs = Response(self.protocol.get_command_output(shell_id, command_id, out_stream, err_stream, keep_track))
         self.protocol.cleanup_command(shell_id, command_id)
         self.protocol.close_shell(shell_id)

@@ -298,6 +298,9 @@ class Protocol(object):
          See #open_shell
         @param string command_id: The command id on the remote machine.
          See #run_command
+        @param stream out_stream: The stream which the stdout should be directed.
+        @param stream err_stream: The stream which the stderr should be directed.
+        @param boolean keep_track: Specified whether to keep track online to command response.
         #@return [Hash] Returns a Hash with a key :exitcode and :data.
          Data is an Array of Hashes where the cooresponding key
         #   is either :stdout or :stderr.  The reason it is in an Array so so
@@ -313,9 +316,7 @@ class Protocol(object):
             stderr_buffer.append(stderr)
         return ''.join(stdout_buffer), ''.join(stderr_buffer), return_code
 
-
-    def _raw_get_command_output(self, shell_id, command_id, out_stream, err_stream,
-                                keep_track=False):
+    def _raw_get_command_output(self, shell_id, command_id, out_stream, err_stream, keep_track=False):
         rq = {'env:Envelope': self._get_soap_header(
             resource_uri='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd',  # NOQA
             action='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive',  # NOQA

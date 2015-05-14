@@ -1,5 +1,5 @@
 __author__ = 'maxim'
-import StringIO
+from io import StringIO
 from winrm import Session
 import sys
 
@@ -12,13 +12,13 @@ dic = {
 }
 
 s = Session(dic["dest_addr"], auth=dic["cred"])
-my_std_out, my_err_out = StringIO.StringIO(), StringIO.StringIO()
+my_std_out, my_err_out = StringIO(), StringIO()
 
 
 def reg():
     print("Start")
 
-    r = s.run_cmd(*dic["cmd"], keep_track=True, out_stream=my_std_out, err_stream=my_err_out)
+    r = s.run_cmd(*dic["cmd"], keep_track=True)
 
     print("Done")
     if r.status_code == 0:
@@ -27,6 +27,7 @@ def reg():
         print(my_err_out.getvalue())
 
 
+print
 reg()
 
 # TODO: There is an issue for support on python 2.x or python 3.x - the whole project won't compile with python > 3.3
