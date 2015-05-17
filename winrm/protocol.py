@@ -6,7 +6,7 @@ import uuid
 import xml.etree.ElementTree as ET
 import xmltodict
 
-from winrm.transport import Transport
+from winrm.transport import Transport, is_py2
 
 
 class Protocol(object):
@@ -295,7 +295,7 @@ class Protocol(object):
         # TODO change assert into user-friendly exception
         assert uuid.UUID(relates_to.replace('uuid:', '')) == message_id
 
-    def get_command_output(self, shell_id, command_id):
+    def get_command_output(self, shell_id, command_id, out_stream=None, err_stream=None):
         """
         Get the Output of the given shell and command
         @param string shell_id: The shell id on the remote machine.
@@ -311,13 +311,13 @@ class Protocol(object):
         stdout_buffer, stderr_buffer = [], []
         command_done = False
         while not command_done:
-            stdout, stderr, return_code, command_done = \
-                self._raw_get_command_output(shell_id, command_id)
+            stdout, stderr, return_code, command_done = self._raw_get_command_output(shell_id, command_id, out_stream,
+                                                                                     err_stream)
             stdout_buffer.append(stdout)
             stderr_buffer.append(stderr)
         return ''.join(stdout_buffer), ''.join(stderr_buffer), return_code
 
-    def _raw_get_command_output(self, shell_id, command_id):
+    def _raw_get_command_output(self, shell_id, command_id, out_stream, err_stream):
         req = {'env:Envelope': self._get_soap_header(
             resource_uri='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd',  # NOQA
             action='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive',  # NOQA
@@ -338,10 +338,16 @@ class Protocol(object):
         for stream_node in stream_nodes:
             if not stream_node.text:
                 continue
+            str_node = str(base64.b64decode(stream_node.text.encode('ascii'))) if is_py2 else \
+                str(base64.b64decode(stream_node.text.encode('ascii')), encoding='ascii')
             if stream_node.attrib['Name'] == 'stdout':
-                stdout += str(base64.b64decode(stream_node.text.encode('ascii')))
+                if out_stream:
+                    out_stream.write(str_node)
+                stdout += str_node
             elif stream_node.attrib['Name'] == 'stderr':
-                stderr += str(base64.b64decode(stream_node.text.encode('ascii')))
+                if err_stream:
+                    err_stream.write(str_node)
+                stderr += str_node
 
         # We may need to get additional output if the stream has not finished.
         # The CommandState will change from Running to Done like so:
